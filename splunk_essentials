@@ -1,0 +1,73 @@
+To download the Apps and Addons, use the following links
+https://we.tl/t-03J8guOaOn
+
+Download the file and extract it. Now, go to the splunk folder where it is installed, then go to etc --> apps --> and paste the extracted content from the zip. 
+After that go to Settings --> server controls --> restart splunk
+
+
+Now, Download the Bots v1 file via https://we.tl/t-Ke2tgVrzS6
+Once downloaded, go to the splunk folder, then go to bin and type the following command
+./splunk install app <the download file>
+
+Now, download the Logs folder using the link
+
+
+
+To find files with large file upload, use the following commands
+| `Load_Sample_Log_Data(Web Proxy Logs)` 
+| where bytes_out>35000000
+====================
+
+To detect the scans
+
+| `Load_Sample_Log_Data(Sample Firewall Data)` 
+| bucket _time span=1h 
+| stats values(dest_ip) values(dest_port) dc(dest_port) as num_dest_port dc(dest_ip) as num_dest_ip by _time src_ip 
+| where num_dest_port > 1000 OR num_dest_ip > 1000
+
+Explaination
+| `Load_Sample_Log_Data(Sample Firewall Data)`
+Think of it as:
+index=botsv1 sourcetype=firewall_logs
+
+🔹 2. Group events into 1-hour time buckets
+| bucket _time span=1h
+This rounds _time into 1-hour blocks, so you can count activity per hour.
+Example:
+10:15 → 10:00  
+10:45 → 10:00  
+11:10 → 11:00
+
+🔹 3. Generate statistics per hour per source IP
+| stats values(dest_ip) values(dest_port) dc(dest_port) as num_dest_port dc(dest_ip) as num_dest_ip by _time src_ip 
+This is the MOST IMPORTANT line.
+It does:
+✔ Group by:
+_time (hour)
+src_ip (attacker / client)
+✔ values(dest_ip)
+Shows which destination IPs the source contacted.
+✔ values(dest_port)
+Shows which destination ports the source used.
+✔ dc(dest_port) → num_dest_port
+Distinct count of ports hit
+(For port scanning detection)
+✔ dc(dest_ip) → num_dest_ip
+Distinct count of IPs contacted
+(For IP scanning / malware spread)
+
+🔹 4. Filter for suspicious scanning behavior
+| where num_dest_port > 1000 OR num_dest_ip > 1000
+This finds aggressive scanning:
+✔ Port Scan
+If a source hits >1000 ports →
+num_dest_port > 1000
+✔ Network Scan
+If a source hits >1000 IP addresses →
+num_dest_ip > 1000
+
+
+==================
+To detect malacious process with splunk
+index=win_sysmon EventCode=1
+| stats values(CommandLine) as CommandLine by Computer,User, Image, ParentImage ParentCommandLine, _time
